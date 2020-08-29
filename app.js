@@ -5,16 +5,7 @@ const { nanoid } = require("nanoid");
 const helmet = require("helmet");
 
 const config = require("./config");
-const { IS_PROD, PORT } = config;
-let { BASE_URL } = config;
-if (!BASE_URL && IS_PROD) {
-  console.error(
-    "BASE_URL environment variable must be set"
-  );
-  process.exit(1);
-} else if (!BASE_URL) {
-  BASE_URL = `http://localhost:${PORT}`;
-}
+const { IS_PROD, BASE_URL } = config;
 
 const app = express();
 app.use(helmet());
@@ -54,7 +45,9 @@ app.post(
       const { url, slug = nanoid(8) } = req.body;
 
       if (slugs[slug]) {
-        return res.status(409).json({ message: "slug in use", data: slugs[slug] });
+        return res
+          .status(409)
+          .json({ message: "slug in use", data: slugs[slug] });
       }
       if (urls[url]) {
         return res.status(409).json({
