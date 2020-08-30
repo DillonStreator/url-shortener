@@ -4,8 +4,22 @@ const { body, validationResult } = require("express-validator");
 const { nanoid } = require("nanoid");
 const helmet = require("helmet");
 
-const config = require("./config");
-const { IS_PROD, BASE_URL } = config;
+const {
+  IS_PROD,
+  BASE_URL,
+  MONGO_USERNAME,
+  MONGO_PASSWORD,
+  MONGO_HOSTNAME,
+  MONGO_PORT,
+  MONGO_DB,
+} = require("./config");
+
+const MONGO_URI = `mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@${MONGO_HOSTNAME}:${MONGO_PORT}/${MONGO_DB}?authSource=admin`;
+
+const db = require("monk")(MONGO_URI);
+
+const urls = db.create("urls");
+urls.createIndex("url slug");
 
 const app = express();
 app.use(helmet());
@@ -21,16 +35,14 @@ const validate = (req, res, next) => {
   return next();
 };
 
-const slugs = {};
-const urls = {};
-
-app.get("/:slug", (req, res, next) => {
+app.get("/:slug", async (req, res, next) => {
   try {
     const { slug } = req.params;
 
-    if (!slugs[slug]) return res.sendStatus(404);
+    const url = await urls.findOne({ slug });
+    if (!url) return res.sendStatus(404);
 
-    res.redirect(slugs[slug].url);
+    res.redirect(url.url);
   } catch (error) {
     next(error);
   }
@@ -40,25 +52,26 @@ app.post(
   "/urls",
   [body("url").isURL(), body("slug").isSlug().optional()],
   validate,
-  (req, res, next) => {
+  async (req, res, next) => {
     try {
       const { url, slug = nanoid(8) } = req.body;
 
-      if (slugs[slug]) {
+      const existingSlug = await urls.findOne({ slug });
+      if (existingSlug) {
         return res
           .status(409)
-          .json({ message: "slug in use", data: slugs[slug] });
+          .json({ message: "slug in use", data: existingSlug });
       }
-      if (urls[url]) {
+      const existingUrl = await urls.findOne({ url });
+      if (existingUrl) {
         return res.status(409).json({
           message: "url has been shortened already",
-          data: urls[url],
+          data: existingUrl,
         });
       }
 
       const obj = { url, slug, shortened: `${BASE_URL}/${slug}` };
-      slugs[slug] = obj;
-      urls[url] = obj;
+      await urls.insert(obj);
       res.status(201).json(obj);
     } catch (error) {
       next(error);
